@@ -1,0 +1,9 @@
+services:
+  asr2api:
+    container_name: asr2api
+    image: ghcr.nju.edu.cn/aahl/qwen-asr2api:main
+    ports:
+      - 8820:80
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    restart: unless-stopped

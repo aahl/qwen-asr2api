@@ -1,0 +1,23 @@
+[project]
+name = "qwen3asr2api"
+version = "0.1.0"
+description = "Qwen 3 ASR to OpenAI Speech API"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.8.0",
+    "gradio_client>=2.0.0",
+]
+
+[project.urls]
+Repository = "https://github.com/aahl/qwen-asr2api"
+
+[project.scripts]
+qwen3asr2api = "asr2api:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["asr2api"]
