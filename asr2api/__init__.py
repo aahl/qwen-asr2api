@@ -64,6 +64,8 @@ async def upload_file(audio_file: aiohttp.multipart.BodyPartReader):
     return src
 
 async def transcribe(request):
+    if not await check_auth(request):
+        return web.json_response({"error": "Unauthorized"}, status=401)
     _LOGGER.info("%s", request.rel_url)
     reader = await request.multipart()
     post = {}
@@ -97,7 +99,24 @@ async def transcribe(request):
         "lang" : result[1],
     })
 
-app = web.Application(logger=_LOGGER)
+async def check_auth(request):
+    if apikey := os.getenv("API_KEY"):
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header not in [apikey, f"Bearer {apikey}"]:
+            return False
+    return True
+
+
+@web.middleware
+async def cors_auth_middleware(request, handler):
+    request.response_factory = lambda: web.StreamResponse()
+    response = await handler(request)
+    response.headers[aiohttp.hdrs.ACCESS_CONTROL_ALLOW_ORIGIN] = "*"
+    response.headers[aiohttp.hdrs.ACCESS_CONTROL_ALLOW_METHODS] = "GET, POST, OPTIONS"
+    response.headers[aiohttp.hdrs.ACCESS_CONTROL_ALLOW_HEADERS] = "Content-Type, Authorization"
+    return response
+
+app = web.Application(logger=_LOGGER, middlewares=[cors_auth_middleware])
 app.on_startup.append(init_session)
 
 app.router.add_get("/v1/models", get_models)
@@ -108,4 +127,4 @@ async def on_cleanup(app):
         await SESSION.close()
 app.on_cleanup.append(on_cleanup)
 
-web.run_app(app, host="0.0.0.0", port=80)
+web.run_app(app, host="0.0.0.0", port=8092)

@@ -40,3 +40,4 @@ curl --request POST \
 
 ## 🔗 Links / 相关链接
 - https://qwen-qwen3-asr-demo.ms.show
+- https://linux.do/t/topic/1367480
