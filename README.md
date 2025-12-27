@@ -29,11 +29,11 @@ docker run -d \
 curl --request POST \
   --url http://localhost:8820/v1/audio/transcriptions \
   --header 'Content-Type: multipart/form-data' \
-  --form model=qwen3-asr-flash \
+  --form model=qwen3-asr \
   --form file='@audio.wav'
 ```
 
-### 🤖 模型列表
+### 🤖 Models / 模型
 - `qwen3-asr`
 - `qwen3-asr:itn` 启用逆文本标准化
 
