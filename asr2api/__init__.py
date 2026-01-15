@@ -94,8 +94,9 @@ async def transcribe(request):
     )
     gradio.close()
     _LOGGER.info("Gradio result: %s", result)
+    text_field = "text" if result and result[1] is not None else "message"
     return web.json_response({
-        "text" : result[0],
+        text_field : result[0],
         "lang" : result[1],
     })
 
