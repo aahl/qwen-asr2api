@@ -82,7 +82,10 @@ async def transcribe(request):
         return web.json_response({"error": "No file provided"}, status=400)
     audio_url = f"https://qwen-qwen3-asr-demo.ms.show/gradio_api/file={audio_path}"
     res = await SESSION.get(audio_url)
-    _LOGGER.info("Audio file: %s", [audio_url, res.status, res.headers])
+    if res.status == 200:
+        _LOGGER.info("Audio file: %s", audio_url)
+    else:
+        _LOGGER.warning("Audio file: %s", [audio_url, res.status, res.headers])
 
     gradio = Client(BASE_URL)
     result = gradio.predict(
