@@ -80,7 +80,7 @@ async def transcribe(request):
             post[part.name] = await part.text()
     if not audio_path:
         return web.json_response({"error": "No file provided"}, status=400)
-    audio_url = f"https://qwen-qwen3-asr-demo.ms.show/gradio_api/file={audio_path}"
+    audio_url = f"{BASE_URL}/gradio_api/file={audio_path}"
     res = await SESSION.get(audio_url)
     if res.status == 200:
         _LOGGER.info("Audio file: %s", audio_url)
