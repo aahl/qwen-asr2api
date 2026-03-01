@@ -1,9 +1,9 @@
 services:
   asr2api:
     container_name: asr2api
-    image: ghcr.nju.edu.cn/aahl/qwen-asr2api:main
+    image: ghcr.io/aahl/qwen-asr2api:main
     ports:
-      - 8820:80
+      - 127.0.0.1:8820:80
     environment:
       #API_KEY: sk-your-dummy-key # The key for this API service, NOT for Qwen
       TZ: ${TZ:-Asia/Shanghai}
