@@ -13,6 +13,10 @@ _LOGGER.setLevel(logging.INFO)
 BASE_URL = os.getenv("BASE_URL") or "https://qwen-qwen3-asr-demo.ms.show"
 USER_AGENT = "Mozilla/5.0 AppleWebKit/537.36 Chrome/143 Safari/537"
 MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
+UPSTREAM_TIMEOUT_SEC = float(os.getenv("UPSTREAM_TIMEOUT_SEC") or 45)
+UPSTREAM_RETRIES = int(os.getenv("UPSTREAM_RETRIES") or 2)
+UPSTREAM_RETRY_BACKOFF_SEC = float(os.getenv("UPSTREAM_RETRY_BACKOFF_SEC") or 0.8)
+MAX_BACKOFF_SEC = 5.0
 
 SESSION = None
 GRADIO = None
@@ -61,6 +65,46 @@ def _do_predict(tmp_path, context, enable_itn):
         api_name="/asr_inference",
     )
 
+def _is_retryable_upstream_error(exc: Exception) -> bool:
+    retryable_names = {
+        "ConnectError",
+        "ReadError",
+        "WriteError",
+        "ReadTimeout",
+        "WriteTimeout",
+        "TimeoutException",
+        "RemoteProtocolError",
+        "ProtocolError",
+        "NetworkError",
+        "TransportError",
+    }
+    cur = exc
+    while cur:
+        if cur.__class__.__name__ in retryable_names:
+            return True
+        if "UNEXPECTED_EOF_WHILE_READING" in str(cur):
+            return True
+        cur = cur.__cause__
+    return False
+
+def _predict_with_retry(tmp_path, context, enable_itn):
+    attempts = max(1, UPSTREAM_RETRIES + 1)
+    for attempt in range(1, attempts + 1):
+        try:
+            return _do_predict(tmp_path, context, enable_itn)
+        except Exception as exc:
+            if attempt == attempts or not _is_retryable_upstream_error(exc):
+                raise
+            sleep_s = min(UPSTREAM_RETRY_BACKOFF_SEC * (2 ** (attempt - 1)), MAX_BACKOFF_SEC)
+            _LOGGER.warning(
+                "Upstream error on attempt %d/%d, retry in %.2fs: %s",
+                attempt,
+                attempts,
+                sleep_s,
+                exc,
+            )
+            time.sleep(sleep_s)
+
 async def transcribe(request):
     if not await check_auth(request):
         return web.json_response({"error": "Unauthorized"}, status=401)
@@ -68,7 +112,20 @@ async def transcribe(request):
     t_start = time.monotonic()
     _LOGGER.info("%s", request.rel_url)
 
-    reader = await request.multipart()
+    if not request.content_type.startswith("multipart/"):
+        return web.json_response(
+            {"error": "Content-Type must be multipart/form-data"},
+            status=400,
+        )
+
+    try:
+        reader = await request.multipart()
+    except AssertionError:
+        return web.json_response(
+            {"error": "Content-Type must be multipart/form-data"},
+            status=400,
+        )
+
     post = {}
     audio_name = None
     audio_data = None
@@ -93,18 +150,31 @@ async def transcribe(request):
 
     try:
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None,
-            _do_predict,
-            tmp_path,
-            post.get("prompt", ""),
-            post.get("model", "").endswith("itn"),
+        result = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                _predict_with_retry,
+                tmp_path,
+                post.get("prompt", ""),
+                post.get("model", "").endswith("itn"),
+            ),
+            timeout=UPSTREAM_TIMEOUT_SEC,
         )
+    except asyncio.TimeoutError:
+        _LOGGER.warning("Upstream ASR timeout after %.1fs", UPSTREAM_TIMEOUT_SEC)
+        return web.json_response({"error": "Upstream ASR timeout"}, status=504)
+    except Exception as exc:
+        _LOGGER.exception("Upstream ASR request failed: %s", exc)
+        return web.json_response({"error": "Upstream ASR unavailable"}, status=502)
     finally:
         os.unlink(tmp_path)
 
     t_done = time.monotonic()
     _LOGGER.info("Gradio result in %.2fs (total %.2fs): %s", t_done - t_parsed, t_done - t_start, result)
+
+    if not isinstance(result, (list, tuple)) or len(result) < 2:
+        _LOGGER.warning("Invalid upstream result payload: %s", result)
+        return web.json_response({"error": "Invalid upstream response"}, status=502)
 
     text_field = "text" if result and result[1] is not None else "message"
     return web.json_response({
@@ -133,21 +203,24 @@ async def cors_auth_middleware(request, handler):
     response.headers[aiohttp.hdrs.ACCESS_CONTROL_ALLOW_HEADERS] = "Content-Type, Authorization"
     return response
 
-app = web.Application(
-    logger=_LOGGER,
-    middlewares=[cors_auth_middleware],
-    client_max_size=MAX_FILE_SIZE,
-)
-app.on_startup.append(init_session)
-
-app.router.add_get("/v1/models", get_models)
-app.router.add_route("*", "/v1/audio/transcriptions", transcribe)
-
 async def on_cleanup(app):
     if SESSION:
         await SESSION.close()
-    if GRADIO:
+    if GRADIO and hasattr(GRADIO, "close"):
         GRADIO.close()
-app.on_cleanup.append(on_cleanup)
 
-web.run_app(app, host="0.0.0.0", port=80)
+def create_app(init_upstream=True):
+    app = web.Application(
+        logger=_LOGGER,
+        middlewares=[cors_auth_middleware],
+        client_max_size=MAX_FILE_SIZE,
+    )
+    if init_upstream:
+        app.on_startup.append(init_session)
+    app.router.add_get("/v1/models", get_models)
+    app.router.add_route("*", "/v1/audio/transcriptions", transcribe)
+    app.on_cleanup.append(on_cleanup)
+    return app
+
+def main():
+    web.run_app(create_app(), host="0.0.0.0", port=80)
