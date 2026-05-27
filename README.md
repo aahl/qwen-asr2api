@@ -39,10 +39,11 @@ docker run -d \
 ```shell
 curl --request POST \
   --url http://localhost:8820/v1/audio/transcriptions \
-  --header 'Content-Type: multipart/form-data' \
   --form model=qwen3-asr \
   --form file='@audio.wav'
 ```
+
+> 注意：如果你用 `curl -F/--form`，不要手动设置 `Content-Type: multipart/form-data`，让 curl 自己生成带 boundary 的请求头。否则服务端会因为缺少 boundary 而拒绝请求。
 
 ### 🏠 Home Assistant
 1. 安装 AI Conversation 集成
@@ -58,5 +59,6 @@ curl --request POST \
 
 
 ## 🔗 Links / 相关链接
-- https://qwen-qwen3-asr-demo.ms.show
+- 默认转发目标：https://qwen-qwen3-asr-demo.ms.show
+- 说明：本项目当前是把远端 Gradio ASR Demo 包装成 OpenAI 风格接口，不是本地离线推理。
 - https://linux.do/t/topic/1367480
