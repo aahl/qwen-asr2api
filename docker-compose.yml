@@ -2,9 +2,17 @@ services:
   asr2api:
     container_name: asr2api
     image: ghcr.nju.edu.cn/aahl/qwen-asr2api:main
+    # The upstream image above does not carry the studio backend yet (pending
+    # https://github.com/aahl/qwen-asr2api/pull/4). To use a studio token now:
+    #image: ghcr.io/osscv/qwen-asr2api:main
     ports:
       - 8820:80
     environment:
       #API_KEY: sk-your-dummy-key # The key for this API service, NOT for Qwen
+      # Setting API_KEY above enables auth. Set this to false to keep the key
+      # but turn auth off, or true to require it (fails to start without a key).
+      #REQUIRE_API_KEY: "false"
+      # Token for the Qwen3-ASR-1.7B studio; setting it also selects that backend
+      #qwen3-asr-1-7b-studio-token: your-studio-token
       TZ: ${TZ:-Asia/Shanghai}
     restart: unless-stopped
